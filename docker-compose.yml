@@ -1,0 +1,42 @@
+
+
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: accidents_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: accidentsdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db_creation.sql:/docker-entrypoint-initdb.d/db_creation.sql
+
+  load:
+    build: .
+    container_name: accidents_loader
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    volumes:
+      - ./json_accidents_data:/app/json_accidents_data
+    command: python load.py
+
+  etl:
+    build: .
+    container_name: accidents_etl
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    volumes:
+      - ./json_accidents_data:/app/json_accidents_data
+    command: python etl.py
+
+volumes:
+  postgres_data:
