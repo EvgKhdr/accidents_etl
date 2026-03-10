@@ -1,23 +1,21 @@
 import json
 import os
-
-directory_name = "json_accidents_data"
-
 import glob
 import logging
 import psycopg2
 from psycopg2.extras import execute_batch
 from dotenv import load_dotenv
 
+directory_name = "json_accidents_data"
+
 load_dotenv()
-# ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger(__name__)
 
-# ── Configuration ──────────────────────────────────────────────────────────────
+
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST", "localhost"),
     "port":     int(os.getenv("DB_PORT", 5432)),
@@ -28,8 +26,8 @@ DB_CONFIG = {
 
 JSON_DIR = "json_accidents_data"
 
-# ── Valid constraint values (mirrors CHECK constraints in DDL) ─────────────────
-VALID_SEVERITY = {"Fatal", "Slight", "Serious"}
+
+VALID_SEVERITY = {"Fatal", "Slight", "Serious", 'Unknown'}
 VALID_BOROUGHS = {
     "Brent", "Redbridge", "Waltham Forest", "Lewisham", "Wandsworth",
     "Barnet", "Southwark", "Bexley", "Lambeth", "Richmond upon Thames",
@@ -37,19 +35,19 @@ VALID_BOROUGHS = {
     "Kensington and Chelsea", "Camden", "Islington", "City of London",
     "Havering", "Hammersmith and Fulham", "Newham", "Harrow", "Merton",
     "Bromley", "Hackney", "Hillingdon", "Ealing", "Greenwich", "Kingston",
-    "Barking and Dagenham", "Croydon", "Haringey",
+    "Barking and Dagenham", "Croydon", "Haringey",'Unknown'
 }
-VALID_CLASS = {"Driver", "Pedestrian", "Passenger"}
+VALID_CLASS = {"Driver", "Pedestrian", "Passenger",'Unknown'}
 VALID_MODE  = {
     "PrivateHire", "Taxi", "GoodsVehicle", "Car", "BusOrCoach",
-    "Pedestrian", "PoweredTwoWheeler", "OtherVehicle", "PedalCycle",
+    "Pedestrian", "PoweredTwoWheeler", "OtherVehicle", "PedalCycle",'Unknown'
 }
-VALID_AGE= {"Child", "Adult"}
+VALID_AGE= {"Child", "Adult",'Unknown'}
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-def clean(value, valid_set):
-    """Return value if it belongs to valid_set, else None (DB DEFAULT kicks in)."""
-    return value if value in valid_set else None
+
+def clean(value, valid_set, default="Unknown"):
+    """Return value if it belongs to valid_set, else default."""
+    return value if value in valid_set else default
 
 
 def load_json_files(directory: str) -> list[dict]:
@@ -58,7 +56,7 @@ def load_json_files(directory: str) -> list[dict]:
     files   = glob.glob(pattern, recursive=True)
 
     if not files:
-        # Also try non-recursive in case files sit at top level
+
         files = glob.glob(os.path.join(directory, "*.json"))
 
     if not files:
@@ -80,11 +78,9 @@ def load_json_files(directory: str) -> list[dict]:
     return records
 
 
-# ── ETL core ──────────────────────────────────────────────────────────────────
+
 def run_etl(records: list[dict], conn) -> None:
     with conn.cursor() as cur:
-
-        # ── 1. Upsert accidents ────────────────────────────────────────────────
         accident_rows = []
         for r in records:
             accident_rows.append((
@@ -113,7 +109,7 @@ def run_etl(records: list[dict], conn) -> None:
         )
         log.info("Upserted %d accident rows", len(accident_rows))
 
-        # ── 2. Fetch accident_id → PK mapping (needed for FK relations) ────────
+
         accident_ids = [r["id"] for r in records]
         cur.execute(
             "SELECT accident_id, id FROM accidents WHERE accident_id = ANY(%s)",
@@ -121,8 +117,6 @@ def run_etl(records: list[dict], conn) -> None:
         )
         pk_map = {row[0]: row[1] for row in cur.fetchall()}
 
-        # ── 3. Insert casualties ───────────────────────────────────────────────
-        # Delete existing children first to avoid duplicates on re-runs
         cur.execute(
             "DELETE FROM casualties WHERE accident_id = ANY(%s)",
             (list(pk_map.values()),),
@@ -140,7 +134,7 @@ def run_etl(records: list[dict], conn) -> None:
                     clean(c.get("class"),    VALID_CLASS),
                     clean(c.get("mode"),     VALID_MODE),
                     clean(c.get("severity"), VALID_SEVERITY),
-                    clean(c.get("age_band"), VALID_AGE),
+                    clean(c.get("ageBand"), VALID_AGE),
                 ))
 
         if casualty_rows:
@@ -155,7 +149,6 @@ def run_etl(records: list[dict], conn) -> None:
             )
         log.info("Inserted %d casualty rows", len(casualty_rows))
 
-        # ── 4. Insert vehicles ─────────────────────────────────────────────────
         cur.execute(
             "DELETE FROM vehicles WHERE accident_id = ANY(%s)",
             (list(pk_map.values()),),
@@ -185,7 +178,7 @@ def run_etl(records: list[dict], conn) -> None:
     log.info("Transaction committed successfully ✓")
 
 
-# ── Entry point ────────────────────────────────────────────────────────────────
+
 def main():
     records = load_json_files(JSON_DIR)
 
