@@ -1,0 +1,11 @@
+\copy (SELECT * FROM accidents WHERE EXTRACT(YEAR FROM date) IN (2017,2018)) TO 'accidents.csv' WITH (FORMAT CSV, HEADER);
+
+docker cp accidents_postgres:/accidents.csv ./accidents.csv
+
+\copy (SELECT * FROM casualties WHERE accident_id IN (SELECT id FROM accidents WHERE EXTRACT(YEAR FROM date) IN (2017,2018))) TO 'casualties.csv' WITH (FORMAT CSV, HEADER);
+
+docker cp accidents_postgres:/casualties.csv ./casualties.csv
+
+\copy (SELECT * FROM vehicles WHERE accident_id IN (SELECT id FROM accidents WHERE EXTRACT(YEAR FROM date) IN (2017,2018))) TO 'vehicles.csv' WITH (FORMAT CSV, HEADER);
+
+docker cp accidents_postgres:/vehicles.csv ./vehicles.csv  
